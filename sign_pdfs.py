@@ -11,17 +11,22 @@ Struktur folder:
     │   └── *_signed.pdf       -> hasil PDF yang sudah ditandatangani
     └── sign_pdfs.py          -> script ini
 
-Menjalankan Program:
+Cara penggunaan:
     python sign_pdfs.py
 """
 
 import importlib
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 def ensure_dependencies():
+    """
+    Memeriksa dan menginstall dependency Python yang diperlukan secara otomatis
+    jika belum terinstall. Dependency yang dibutuhkan: PyMuPDF dan Pillow.
+    """
     required = [("PyMuPDF", "fitz"), ("Pillow", "PIL")]
     missing = []
 
@@ -81,7 +86,11 @@ VERTICAL_OFFSET_PT = 8
 
 # Penempatan kanan-kiri tanda tangan relatif terhadap kotak teks keyword
 HORIZONTAL_ALIGN = "left"   # "left", "center", atau "right"
-HORIZONTAL_OFFSET_PT = 30        # nilai positif = ke kanan, negatif = ke kiri
+HORIZONTAL_OFFSET_PT = 30   # nilai positif = ke kanan, negatif = ke kiri
+
+# Konfigurasi flattening (rasterisasi halaman menjadi gambar)
+FLATTEN_PDF = True          # True = hasil PDF akan di-flatten | False
+FLATTEN_DPI = 500           # resolusi raster, 300 cukup untuk cetak
 
 
 def get_signature_height(img_path: Path, target_width_pt: float) -> float:
@@ -93,6 +102,41 @@ def get_signature_height(img_path: Path, target_width_pt: float) -> float:
         width_px, height_px = img.size
         aspect_ratio = height_px / width_px
     return target_width_pt * aspect_ratio
+
+
+def flatten_pdf(input_path: Path, output_path: Path, dpi: int = 300) -> bool:
+    """
+    Meratakan (flatten) seluruh halaman PDF menjadi gambar raster,
+    lalu menyusun ulang menjadi satu dokumen PDF baru.
+    Hasilnya seluruh konten (teks, gambar, tanda tangan) menyatu
+    dan tidak bisa lagi dipisahkan/diekstrak sebagai objek terpisah.
+    """
+    try:
+        src_doc = fitz.open(input_path)
+        dst_doc = fitz.open()
+
+        for page in src_doc:
+            # Render halaman menjadi pixmap dengan DPI tertentu
+            mat = fitz.Matrix(dpi / 72, dpi / 72)
+            pix = page.get_pixmap(matrix=mat)
+
+            # Hitung dimensi halaman baru dalam point
+            new_width_pt = pix.width * 72 / dpi
+            new_height_pt = pix.height * 72 / dpi
+
+            # Buat halaman baru dengan dimensi yang sama
+            new_page = dst_doc.new_page(width=new_width_pt, height=new_height_pt)
+
+            # Tempel gambar raster ke halaman baru
+            new_page.insert_image(new_page.rect, pixmap=pix)
+
+        dst_doc.save(output_path, deflate=True, garbage=4)
+        dst_doc.close()
+        src_doc.close()
+        return True
+    except Exception as e:
+        print(f"[ERROR] Gagal flatten PDF: {e}")
+        return False
 
 
 def process_pdf(input_path: Path, output_path: Path) -> bool:
@@ -153,11 +197,34 @@ def process_pdf(input_path: Path, output_path: Path) -> bool:
         doc.close()
         return False
 
-    # Simpan hasil PDF
+    # Simpan hasil sementara (PDF yang sudah ditandatangani tapi belum flatten)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(output_path, deflate=True, garbage=4)
+    temp_signed_path = output_path.with_suffix(".temp_signed.pdf")
+    doc.save(temp_signed_path, deflate=True, garbage=4)
     doc.close()
-    return True
+
+    # Hapus file output lama jika sudah ada agar proses penyimpanan lancar
+    if output_path.exists():
+        output_path.unlink()
+
+    # Lakukan flattening jika diaktifkan
+    if FLATTEN_PDF:
+        flatten_ok = flatten_pdf(temp_signed_path, output_path, dpi=FLATTEN_DPI)
+        if flatten_ok:
+            if temp_signed_path.exists():
+                temp_signed_path.unlink()  # hapus file sementara
+            return True
+        else:
+            print("[WARN] Flattening gagal, menggunakan PDF non-flatten sebagai cadangan.")
+            if output_path.exists():
+                output_path.unlink()
+            temp_signed_path.rename(output_path)
+            return True
+    else:
+        if output_path.exists():
+            output_path.unlink()
+        temp_signed_path.rename(output_path)
+        return True
 
 
 def main():
@@ -174,7 +241,8 @@ def main():
         print("[WARN] Tidak ada file PDF di folder pdf/")
         return
 
-    print(f"[INFO] Ditemukan {len(pdf_files)} file PDF untuk diproses.\n")
+    print(f"[INFO] Ditemukan {len(pdf_files)} file PDF untuk diproses.")
+    print(f"[INFO] Flattening: {'AKTIF' if FLATTEN_PDF else 'NONAKTIF'} (DPI={FLATTEN_DPI})\n")
 
     success_count = 0
     skipped_count = 0
