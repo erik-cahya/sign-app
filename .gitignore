@@ -11,6 +11,9 @@ env/
 ENV/
 .venv/
 
+# Files
+*.zip
+
 # IDEs
 .vscode/
 .idea/

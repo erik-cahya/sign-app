@@ -14,6 +14,10 @@ Struktur folder:
 Cara penggunaan:
     python sign_pdfs.py
 """
+"""
+    signature width : 100
+    paraf width : 50
+"""
 
 import importlib
 import subprocess
@@ -23,10 +27,6 @@ from pathlib import Path
 
 
 def ensure_dependencies():
-    """
-    Memeriksa dan menginstall dependency Python yang diperlukan secara otomatis
-    jika belum terinstall. Dependency yang dibutuhkan: PyMuPDF dan Pillow.
-    """
     required = [("PyMuPDF", "fitz"), ("Pillow", "PIL")]
     missing = []
 
@@ -72,40 +72,34 @@ from PIL import Image
 BASE_DIR = Path(__file__).parent.resolve()
 ASSET_DIR = BASE_DIR / "asset"
 PDF_DIR = BASE_DIR / "pdf"
-OUTPUT_DIR = BASE_DIR / "pdf_output"
-SIGNATURE_PATH = ASSET_DIR / "sign.png"
+OUTPUT_DIR = BASE_DIR / "pdf_output/BD"
+SIGNATURE_PATH = ASSET_DIR / "paraf_bd.png"
 
 # Konfigurasi pencarian teks dan penempatan tanda tangan
-KEYWORD = "Dekan Fakultas Informatika dan Komputer"
-SIGNED_SUFFIX = "_signed"
+KEYWORD = "Dekan Fakultas Bisnis dan Vokasi"
+SIGNED_SUFFIX = ""
 
 # Custom Halaman | None = semua halaman.
 TARGET_PAGES = None # Contoh: TARGET_PAGES = [1, 3]  -> hanya halaman 1 dan 3
 
 # Ukuran tanda tangan (lebar dalam satuan point PDF, 1 point = 1/72 inch)
-SIGNATURE_WIDTH_PT = 100  # ubah sesuai kebutuhan
+SIGNATURE_WIDTH_PT = 30  # ubah sesuai kebutuhan
 
 # Jarak teks ke tanda tangan (dalam point)
 PLACE_ABOVE_TEXT = False   # True = di atas teks, False = di bawah teks
-VERTICAL_OFFSET_PT = 18
+VERTICAL_OFFSET_PT = -20
 
 # Penempatan kanan-kiri tanda tangan relatif terhadap kotak teks keyword
 HORIZONTAL_ALIGN = "left"   # "left", "center", atau "right"
-HORIZONTAL_OFFSET_PT = 0   # nilai positif = ke kanan, negatif = ke kiri
+HORIZONTAL_OFFSET_PT = -30   # nilai positif = ke kanan, negatif = ke kiri
 
 # Konfigurasi flattening (rasterisasi halaman menjadi gambar)
 FLATTEN_PDF = True          # True = hasil PDF akan di-flatten
-FLATTEN_DPI = 300           # resolusi raster, 300 cukup untuk cetak
+FLATTEN_DPI = 500           # resolusi raster, 300 cukup untuk cetak
 
 # ################################################################ END CONFIG
 
-
-
 def get_signature_height(img_path: Path, target_width_pt: float) -> float:
-    """
-    Menghitung tinggi gambar tanda tangan (dalam point PDF)
-    berdasarkan lebar yang diinginkan, mempertahankan rasio aspek.
-    """
     with Image.open(img_path) as img:
         width_px, height_px = img.size
         aspect_ratio = height_px / width_px
@@ -113,12 +107,6 @@ def get_signature_height(img_path: Path, target_width_pt: float) -> float:
 
 
 def flatten_pdf(input_path: Path, output_path: Path, dpi: int = 300) -> bool:
-    """
-    Meratakan (flatten) seluruh halaman PDF menjadi gambar raster,
-    lalu menyusun ulang menjadi satu dokumen PDF baru.
-    Hasilnya seluruh konten (teks, gambar, tanda tangan) menyatu
-    dan tidak bisa lagi dipisahkan/diekstrak sebagai objek terpisah.
-    """
     try:
         src_doc = fitz.open(input_path)
         dst_doc = fitz.open()
@@ -148,21 +136,12 @@ def flatten_pdf(input_path: Path, output_path: Path, dpi: int = 300) -> bool:
 
 
 def should_process_page(page_number: int) -> bool:
-    """
-    Memeriksa apakah halaman tertentu harus diproses berdasarkan TARGET_PAGES.
-    Jika TARGET_PAGES bernilai None, semua halaman diproses.
-    Halaman dihitung mulai dari 1 sesuai konvensi pengguna.
-    """
     if TARGET_PAGES is None:
         return True
     return page_number in TARGET_PAGES
 
 
 def compute_signature_rect(text_rect, sig_height: float) -> fitz.Rect:
-    """
-    Menghitung koordinat kotak tanda tangan berdasarkan posisi teks keyword
-    dan konfigurasi alignment/orientasi.
-    """
     # Posisikan tanda tangan secara horizontal berdasarkan alignment
     align = HORIZONTAL_ALIGN.lower()
     if align == "left":
@@ -186,13 +165,6 @@ def compute_signature_rect(text_rect, sig_height: float) -> fitz.Rect:
 
 
 def process_pdf(input_path: Path, output_path: Path) -> bool:
-    """
-    Membuka PDF, mencari keyword di semua halaman yang ditentukan,
-    lalu menempelkan tanda tangan pada setiap instance keyword yang ditemukan.
-    Posisi diatur oleh konfigurasi (atas/bawah teks, kiri/tengah/kanan
-    secara horizontal, beserta offset masing-masing).
-    Mengembalikan True jika berhasil, False jika gagal.
-    """
     doc = fitz.open(input_path)
 
     signature_count = 0
@@ -268,12 +240,7 @@ def main():
     skipped_count = 0
 
     for pdf_path in pdf_files:
-        # Hindari memproses file yang sudah berakhiran _signed (jika ada di input)
-        if pdf_path.stem.endswith(SIGNED_SUFFIX):
-            print(f"[SKIP] Melewati file yang sudah ditandatangani: {pdf_path.name}")
-            skipped_count += 1
-            continue
-
+        # Proses semua file PDF, termasuk yang sudah berakhiran _sign
         output_filename = f"{pdf_path.stem}{SIGNED_SUFFIX}.pdf"
         output_path = OUTPUT_DIR / output_filename
 
